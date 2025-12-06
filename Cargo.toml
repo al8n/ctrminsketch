@@ -24,6 +24,8 @@ std = []
 [dev-dependencies]
 criterion = "0.7"
 tempfile = "3"
+ahash = { version = "0.8", default-features = false }
+
 
 [profile.bench]
 opt-level = 3

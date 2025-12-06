@@ -2,7 +2,7 @@
 // Caffeine's `FrequencySketch` (Apache-2.0):
 // https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java
 
-use super::{Table, TableViewD4C4, D4C4Storage, WithCapacity, FixedSizeStorage};
+use super::{D4C4Storage, FixedSizeStorage, Table, TableViewD4C4, WithCapacity};
 
 const RESET_MASK: u64 = 0x7777_7777_7777_7777;
 const ONE_MASK: u64 = 0x1111_1111_1111_1111;
@@ -250,4 +250,146 @@ const fn spread_d4(h: u64) -> u32 {
   h = h.wrapping_mul(0xac4c1b51);
   h ^= h >> 15;
   h
+}
+
+#[cfg(test)]
+mod tests {
+
+  use super::*;
+  use core::hash::{Hash, BuildHasher, BuildHasherDefault};
+
+  #[cfg(not(feature = "std"))]
+  type DH = ahash::AHasher;
+  #[cfg(feature = "std")]
+  type DH = std::hash::DefaultHasher;
+
+  fn hasher<T: Hash>() -> impl Fn(T) -> u64 {
+    let build_hasher = BuildHasherDefault::<DH>::default();
+    move |key| {
+      build_hasher.hash_one(&key)
+    }
+  }
+
+  // Helper: make a sketch (like Java makeSketch)
+  fn make_sketch(maximum: u32) -> FreqD4C4 {
+    FreqD4C4::with_capacity(maximum)
+  }
+
+  #[test]
+  fn increment_once() {
+    let mut sketch = make_sketch(512);
+    let x = 12345;
+
+    let hasher = hasher();
+    let h = hasher(x);
+    sketch.increment(h);
+    assert_eq!(sketch.estimate(h), 1);
+  }
+
+  #[test]
+  fn increment_max() {
+    let mut sketch = make_sketch(512);
+    let x = 99999;
+    let hasher = hasher();
+    let h = hasher(x);
+    for _ in 0..20 {
+      sketch.increment(h);
+    }
+    assert_eq!(sketch.estimate(h), 15);
+  }
+
+  // #[test]
+  // fn increment_distinct() {
+  //   let mut sketch = make_sketch(512);
+
+  //   let a = 200;
+  //   let b = 201;
+  //   let c = 202;
+
+  //   sketch.increment(a);
+  //   sketch.increment(b);
+
+  //   assert_eq!(sketch.estimate(hash_u64(&a)), 1);
+  //   assert_eq!(sketch.estimate(hash_u64(&b)), 1);
+  //   assert_eq!(sketch.estimate(hash_u64(&c)), 0);
+  // }
+
+  // #[test]
+  // fn increment_zero() {
+  //   let mut sketch = make_sketch(512);
+
+  //   sketch.increment(0);
+  //   assert_eq!(sketch.estimate(hash_u64(&0)), 1);
+  // }
+
+  // #[test]
+  // fn reset_behavior() {
+  //   let mut sketch = make_sketch(64);
+  //   let mut reset_happened = false;
+
+  //   for i in 1..(20 * sketch.table.len() as u64) {
+  //     sketch.increment(i);
+  //     if sketch.size as u64 != i {
+  //       reset_happened = true;
+  //       break;
+  //     }
+  //   }
+
+  //   assert!(reset_happened);
+  //   assert!(sketch.size <= sketch.sample_size / 2);
+  // }
+
+  // #[test]
+  // fn full() {
+  //   let mut sketch = make_sketch(512);
+  //   sketch.sample_size = u32::MAX;
+
+  //   for i in 0..100_000 {
+  //     sketch.increment(i);
+  //   }
+
+  //   // Every slot should have 64 bits = all counters = 4-bit full
+  //   for slot in sketch.table.iter() {
+  //     assert_eq!(slot.count_ones(), 64); // full bits
+  //   }
+
+  //   sketch.reset();
+
+  //   for slot in sketch.table.iter() {
+  //     assert_eq!(*slot, RESET_MASK);
+  //   }
+  // }
+
+  // #[test]
+  // fn heavy_hitters() {
+  //   let mut sketch = make_sketch(512);
+
+  //   for i in 100..100_000u64 {
+  //     sketch.increment(i);
+  //   }
+
+  //   for i in (0..10u64).step_by(2) {
+  //     for _ in 0..i {
+  //       sketch.increment(i);
+  //     }
+  //   }
+
+  //   let mut popularity = [0u8; 10];
+  //   for i in 0..10 {
+  //     popularity[i] = sketch.estimate(hash_u64(&i));
+  //   }
+
+  //   // Exactly match Java logic
+  //   for i in 0..10 {
+  //     if matches!(i, 0 | 1 | 3 | 5 | 7 | 9) {
+  //       assert!(popularity[i] <= popularity[2]);
+  //     } else if i == 2 {
+  //       assert!(popularity[2] <= popularity[4]);
+  //     } else if i == 4 {
+  //       assert!(popularity[4] <= popularity[6]);
+  //     } else if i == 6 {
+  //       assert!(popularity[6] <= popularity[8]);
+  //     }
+  //   }
+  // }
 }
