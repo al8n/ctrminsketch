@@ -9,3 +9,7 @@ extern crate alloc as std;
 
 #[cfg(feature = "std")]
 extern crate std;
+
+pub use table::*;
+
+mod table;
