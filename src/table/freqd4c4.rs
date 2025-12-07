@@ -775,20 +775,23 @@ mod tests {
       println!("{:?}", sketch);
     }
 
-    let encoded_len = sketch.encoded_len().get();
-    let mut buf = std::vec![0u8; encoded_len];
-    let written = sketch.encode_to(&mut buf).unwrap().get();
-    assert_eq!(written, encoded_len);
-    let (read, decoded) = FreqD4C4::decode(&buf).unwrap();
-    assert_eq!(read, written);
-    assert_eq!(sketch, decoded);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      let encoded_len = sketch.encoded_len().get();
+      let mut buf = std::vec![0u8; encoded_len];
+      let written = sketch.encode_to(&mut buf).unwrap().get();
+      assert_eq!(written, encoded_len);
+      let (read, decoded) = FreqD4C4::decode(&buf).unwrap();
+      assert_eq!(read, written);
+      assert_eq!(sketch, decoded);
 
-    let compact_encoded_len = sketch.compact_encoded_len().get();
-    let mut compact_buf = std::vec![0u8; compact_encoded_len];
-    let compact_written = sketch.encode_compact_to(&mut compact_buf).unwrap().get();
-    assert_eq!(compact_written, compact_encoded_len);
-    let (compact_read, compact_decoded) = FreqD4C4::decode_compact(&compact_buf).unwrap();
-    assert_eq!(compact_read, compact_written);
-    assert_eq!(sketch, compact_decoded);
+      let compact_encoded_len = sketch.compact_encoded_len().get();
+      let mut compact_buf = std::vec![0u8; compact_encoded_len];
+      let compact_written = sketch.encode_compact_to(&mut compact_buf).unwrap().get();
+      assert_eq!(compact_written, compact_encoded_len);
+      let (compact_read, compact_decoded) = FreqD4C4::decode_compact(&compact_buf).unwrap();
+      assert_eq!(compact_read, compact_written);
+      assert_eq!(sketch, compact_decoded);
+    }
   }
 }

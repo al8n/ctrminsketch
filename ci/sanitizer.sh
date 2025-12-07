@@ -3,7 +3,7 @@
 set -euo pipefail
 
 TARGET="${SANITIZER_TARGET:-x86_64-unknown-linux-gnu}"
-FEATURES="${SANITIZER_FEATURES:-unstable}"
+FEATURES="${SANITIZER_FEATURES:-std}"
 COMMON_TEST_ARGS=(--features "${FEATURES}")
 
 # Keep ODR detection disabled (match stdlib) but allow leak detection so we do
