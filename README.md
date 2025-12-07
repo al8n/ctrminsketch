@@ -61,12 +61,12 @@ ctrminsketch = { version = "0.1", default-features = false }
 
 ### Basic Example
 
-```rust
+```rust,ignore
 use ctrminsketch::{FreqD4C4, Table};
 use std::hash::{Hash, Hasher};
 
 // Create a sketch with capacity for ~512 items
-let mut sketch = FreqD4C4::with_capacity(512);
+let mut sketch = FreqD4C4::boxed(512);
 
 // Helper function to hash items
 fn hash_item<T: Hash>(item: &T) -> u64 {
@@ -96,28 +96,29 @@ use ctrminsketch::{FreqD4C4, Table};
 let mut sketch: FreqD4C4<[u64; 64]> = FreqD4C4::new();
 
 // Dynamic allocation (requires std or alloc feature)
-let mut sketch = FreqD4C4::with_capacity(1024);
+#[cfg(any(feature = "std", feature = "alloc"))]
+let mut sketch: FreqD4C4 = FreqD4C4::with_capacity(1024);
 ```
 
 ### Serialization
 
-```rust
+```rust,ignore
 use ctrminsketch::{FreqD4C4, Table};
 
-let mut sketch = FreqD4C4::with_capacity(512);
+let mut sketch = FreqD4C4::boxed(512);
 // ... add items ...
 
 // Fixed-size encoding (8 bytes per u64)
-let mut buffer = vec![0u8; sketch.encoded_len()];
+let mut buffer = vec![0u8; sketch.encoded_len().get()];
 sketch.encode_to(&mut buffer).unwrap();
 
 // Compact encoding (variable-length, more space-efficient)
-let mut compact_buffer = vec![0u8; sketch.encoded_compact_len()];
+let mut compact_buffer = vec![0u8; sketch.compact_encoded_len().get()];
 sketch.encode_compact_to(&mut compact_buffer).unwrap();
 
 // Decode
-let decoded = FreqD4C4::decode(&buffer).unwrap();
-let decoded_compact = FreqD4C4::decode_compact(&compact_buffer).unwrap();
+let (_, decoded): (_, FreqD4C4) = FreqD4C4::decode(&buffer).unwrap();
+let (_, decoded_compact): (_, FreqD4C4) = FreqD4C4::decode_compact(&compact_buffer).unwrap();
 ```
 
 ## How It Works

@@ -6,15 +6,56 @@ use core::num::NonZeroUsize;
 
 use super::{D4C4Storage, FixedSizeStorage, Table, TableViewD4C4, WithCapacity};
 use varing::{
-  decode_u32_varint, encode_u32_varint_to,
-  encoded_u32_varint_len, DecodeError, EncodeError, InsufficientSpace,
+  decode_u32_varint, encode_u32_varint_to, encoded_u32_varint_len, DecodeError, EncodeError,
+  InsufficientSpace,
 };
 
+/// Bitmask for resetting counters: 0x7 keeps lower 3 bits when right-shifted by 1.
+///
+/// Applied to each 4-bit counter to halve it: `(counter >> 1) & 0x7`
 const RESET_MASK: u64 = 0x7777_7777_7777_7777;
 
-/// Implementation of [Caffeine's Frequency Sketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java).
+/// A Count-Min Sketch with depth 4 and 4-bit counters.
 ///
-/// Depth: 4, Count: 4-bit
+/// This is an implementation of [Caffeine's Frequency Sketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java),
+/// a probabilistic data structure for tracking item frequencies in a space-efficient manner.
+///
+/// # Algorithm Details
+///
+/// - **Depth**: 4 hash functions for better accuracy
+/// - **Counter Width**: 4 bits (values 0-15, saturating at 15)
+/// - **Storage**: Counters packed into `u64` words (16 counters per word)
+/// - **Automatic Aging**: Halves all counters when sample size (10× capacity) is reached
+///
+/// # Memory Layout
+///
+/// The table is organized into blocks of 8 consecutive `u64` words. Each block
+/// contains 128 4-bit counters (8 words × 16 counters/word). The 4 hash functions
+/// each select one counter from different pairs of words within the block.
+///
+/// # Example
+///
+/// ```rust
+/// # #[cfg(any(feature = "std", feature = "alloc"))] {
+/// use ctrminsketch::{FreqD4C4, Table};
+///
+/// // Create with capacity for ~512 items
+/// let mut sketch = FreqD4C4::boxed(512);
+///
+/// // Track frequencies
+/// for _ in 0..10 {
+///     sketch.increment(42);
+/// }
+///
+/// // Estimate frequency (conservative, may overestimate)
+/// let freq = sketch.estimate(42);
+/// assert!(freq >= 10 && freq <= 15);
+/// # }
+/// ```
+///
+/// # Type Parameters
+///
+/// - `T`: Storage backend (`Box<[u64]>`, `Vec<u64>`, or `[u64; N]`)
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(C)]
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -71,7 +112,18 @@ impl<T> FreqD4C4<T>
 where
   T: FixedSizeStorage,
 {
-  /// Creates a new `FreqD4C4` with fixed size storage.
+  /// Creates a new `FreqD4C4` with fixed-size array storage.
+  ///
+  /// # Example
+  ///
+  /// ```rust
+  /// use ctrminsketch::{FreqD4C4, Table};
+  ///
+  /// // Create with fixed 64-word storage (no heap allocation)
+  /// let mut sketch: FreqD4C4<[u64; 64]> = FreqD4C4::new();
+  /// sketch.increment(42);
+  /// assert_eq!(sketch.estimate(42), 1);
+  /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn new() -> Self {
     let table = T::EMPTY;
@@ -91,16 +143,74 @@ where
   }
 }
 
+#[cfg(any(feature = "std", feature = "alloc"))]
+impl FreqD4C4<std::boxed::Box<[u64]>> {
+  /// Creates a new `FreqD4C4` with boxed storage sized for the given capacity.
+  ///
+  /// The actual table size will be the next power of two >= `capacity`, with
+  /// a minimum of 8 words. The sample size (aging threshold) is set to 10× capacity.
+  ///
+  /// # Example
+  ///
+  /// ```rust
+  /// use ctrminsketch::{FreqD4C4, Table};
+  ///
+  /// // Create with capacity for ~512 items (uses heap allocation)
+  /// let mut sketch: FreqD4C4 = FreqD4C4::boxed(512);
+  /// sketch.increment(42);
+  /// assert_eq!(sketch.estimate(42), 1);
+  /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn boxed(capacity: usize) -> Self {
+    let capacity = capacity as u32;
+
+    // clamp max size like Caffeine
+    let maximum = capacity.min(i32::MAX as u32 >> 1);
+
+    // table length = next power of two >= maximum, min 8
+    let table_len = maximum.next_power_of_two().max(8);
+    // allocate 64-bit counter blocks
+    let table = std::boxed::Box::<[u64]>::with_capacity(table_len as usize);
+
+    // sampleSize = 10 * maximum (bounded)
+    let sample_size = if capacity == 0 {
+      10
+    } else {
+      (10u32.wrapping_mul(maximum)).min(i32::MAX as u32)
+    };
+    let block_mask = (table_len >> 3) - 1;
+
+    Self {
+      size: 0,
+      sample_size,
+      block_mask,
+      pad: 0,
+      table,
+    }
+  }
+}
+
 impl<T> FreqD4C4<T>
 where
   T: WithCapacity,
 {
-  /// Creates a new `FreqD4C4` with the given capacity.
+  /// Creates a new `FreqD4C4` with dynamic storage sized for the given capacity.
+  ///
+  /// The actual table size will be the next power of two >= `capacity`, with
+  /// a minimum of 8 words. The sample size (aging threshold) is set to 10× capacity.
+  ///
+  /// # Example
+  ///
+  /// ```rust
+  /// use ctrminsketch::{FreqD4C4, Table};
+  ///
+  /// // Create with capacity for ~512 items (uses heap allocation)
+  /// let mut sketch: FreqD4C4<std::vec::Vec<u64>> = FreqD4C4::with_capacity(512);
+  /// sketch.increment(42);
+  /// assert_eq!(sketch.estimate(42), 1);
+  /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub fn with_capacity(capacity: usize) -> Self
-  where
-    T: WithCapacity,
-  {
+  pub fn with_capacity(capacity: usize) -> Self {
     let capacity = capacity as u32;
 
     // clamp max size like Caffeine
@@ -130,25 +240,35 @@ where
 }
 
 impl<T> FreqD4C4<T> {
-  /// Returns the mask
+  /// Returns the block mask used for hash table indexing.
+  ///
+  /// The mask is `(table_len / 8) - 1`, where table_len is the number of `u64` words.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn mask(&self) -> u32 {
     self.block_mask
   }
 
-  /// Returns the current size
+  /// Returns the current number of increments performed.
+  ///
+  /// This counter is updated on each successful increment and reset to
+  /// approximately half its value during aging.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn size(&self) -> u32 {
     self.size
   }
 
-  /// Returns the sample size
+  /// Returns the sample size threshold that triggers automatic aging.
+  ///
+  /// When `size()` reaches this value, all counters are halved. This is
+  /// typically set to 10× the capacity.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn sample_size(&self) -> u32 {
     self.sample_size
   }
 
   /// Returns a reference to the underlying table storage.
+  ///
+  /// The table is an array of `u64` words, each containing 16 packed 4-bit counters.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn table(&self) -> &T {
     &self.table
@@ -422,6 +542,14 @@ where
   }
 }
 
+/// Secondary hash function for deriving 4 counter indices.
+///
+/// Takes the result of [`spread_d4`] and applies additional mixing to
+/// generate 4 independent hash values (one per byte of the result).
+///
+/// # Algorithm
+///
+/// Uses multiplication and XOR shifts for avalanche properties.
 #[cfg_attr(not(tarpaulin), inline(always))]
 const fn rehash_d4(mut h: u32) -> u32 {
   h = h.wrapping_mul(0x31848bab);
@@ -429,6 +557,16 @@ const fn rehash_d4(mut h: u32) -> u32 {
   h
 }
 
+/// Primary hash function for block selection and initial spreading.
+///
+/// Converts a 64-bit hash to a well-distributed 32-bit value used for:
+/// - Block selection (via `block_mask`)
+/// - Input to [`rehash_d4`] for counter index generation
+///
+/// # Algorithm
+///
+/// Uses a series of XOR folds, multiplications, and shifts to ensure
+/// good avalanche properties and bit mixing.
 #[cfg_attr(not(tarpaulin), inline(always))]
 const fn spread_d4(h: u64) -> u32 {
   let mut h = (h ^ (h >> 32)) as u32;
@@ -441,7 +579,6 @@ const fn spread_d4(h: u64) -> u32 {
 }
 
 #[cfg(test)]
-#[cfg(any(feature = "std", feature = "alloc"))]
 mod tests {
 
   use super::*;
@@ -450,14 +587,18 @@ mod tests {
     getrandom::u32().expect("getrandom failed")
   }
 
-  // Helper: make a sketch (like Java makeSketch)
-  fn make_sketch(maximum: usize) -> FreqD4C4 {
-    FreqD4C4::with_capacity(maximum)
-  }
-
   #[test]
   fn increment_once() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      increment_once_runner(FreqD4C4::<Vec<u64>>::with_capacity(8));
+      increment_once_runner(FreqD4C4::boxed(8));
+    }
+
+    increment_once_runner(FreqD4C4::<[u64; 8]>::new());
+  }
+
+  fn increment_once_runner(mut sketch: impl Table<Count = u8>) {
     let h = random();
     sketch.increment(h as u64);
     assert_eq!(sketch.estimate(h as u64), 1);
@@ -465,7 +606,16 @@ mod tests {
 
   #[test]
   fn increment_max() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      increment_max_runner(FreqD4C4::<Vec<u64>>::with_capacity(32));
+      increment_max_runner(FreqD4C4::boxed(32));
+    }
+
+    increment_max_runner(FreqD4C4::<[u64; 32]>::new());
+  }
+
+  fn increment_max_runner(mut sketch: impl Table<Count = u8>) {
     let h = random();
     for _ in 0..20 {
       sketch.increment(h as u64);
@@ -475,8 +625,16 @@ mod tests {
 
   #[test]
   fn increment_distinct() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      increment_distinct_runner(FreqD4C4::<Vec<u64>>::with_capacity(128));
+      increment_distinct_runner(FreqD4C4::boxed(128));
+    }
 
+    increment_distinct_runner(FreqD4C4::<[u64; 128]>::new());
+  }
+
+  fn increment_distinct_runner(mut sketch: impl Table<Count = u8>) {
     let a = random();
     let b = a + 1;
     let c = b + 1;
@@ -491,18 +649,35 @@ mod tests {
 
   #[test]
   fn increment_zero() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      increment_zero_runner(FreqD4C4::<Vec<u64>>::with_capacity(256));
+      increment_zero_runner(FreqD4C4::boxed(256));
+    }
 
+    increment_zero_runner(FreqD4C4::<[u64; 256]>::new());
+  }
+
+  fn increment_zero_runner(mut sketch: impl Table<Count = u8>) {
     sketch.increment(0);
     assert_eq!(sketch.estimate(0), 1);
   }
 
   #[test]
   fn reset_behavior() {
-    let mut sketch = make_sketch(64);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      reset_behavior_runner(FreqD4C4::<Vec<u64>>::with_capacity(64));
+      reset_behavior_runner(FreqD4C4::boxed(64));
+    }
+
+    reset_behavior_runner(FreqD4C4::<[u64; 64]>::new());
+  }
+
+  fn reset_behavior_runner(mut sketch: FreqD4C4<impl D4C4Storage>) {
     let mut reset_happened = false;
 
-    for i in 1..(20 * sketch.table.len() as u32) {
+    for i in 1..(20 * sketch.table.as_ref().len() as u32) {
       sketch.increment(i as u64);
       if sketch.size != i {
         reset_happened = true;
@@ -516,7 +691,17 @@ mod tests {
 
   #[test]
   fn full() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      full_runner(FreqD4C4::<Vec<u64>>::with_capacity(512));
+      full_runner(FreqD4C4::boxed(512));
+    }
+
+    full_runner(FreqD4C4::<[u64; 512]>::new());
+  }
+
+  fn full_runner(mut sketch: FreqD4C4<impl D4C4Storage>) {
+    // let mut sketch = make_sketch(512);
     sketch.sample_size = u32::MAX;
 
     for i in 0..100_000 {
@@ -524,21 +709,32 @@ mod tests {
     }
 
     // Every slot should have 64 bits = all counters = 4-bit full
-    for slot in sketch.table.iter() {
+    for slot in sketch.table.as_ref().iter() {
       assert_eq!(slot.count_ones(), 64); // full bits
     }
 
     sketch.reset();
 
-    for slot in sketch.table.iter() {
+    for slot in sketch.table.as_ref().iter() {
       assert_eq!(*slot, RESET_MASK);
     }
   }
 
   #[test]
   fn heavy_hitters() {
-    let mut sketch = make_sketch(512);
+    #[cfg(any(feature = "std", feature = "alloc"))]
+    {
+      heavy_hitters_inner(FreqD4C4::<Vec<u64>>::with_capacity(512));
+      heavy_hitters_inner(FreqD4C4::boxed(512));
+    }
 
+    heavy_hitters_inner(FreqD4C4::<[u64; 512]>::new());
+  }
+
+  fn heavy_hitters_inner<T>(mut sketch: FreqD4C4<T>)
+  where
+    T: D4C4Storage + super::super::TryFromIterator<Item = u64> + Eq,
+  {
     for i in 100..100_000u32 {
       sketch.increment(i as u64);
     }

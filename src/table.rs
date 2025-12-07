@@ -1,7 +1,14 @@
+//! Core traits and storage implementations for Count-Min Sketch tables.
+//!
+//! This module provides the fundamental building blocks for Count-Min Sketch
+//! implementations, including storage traits, encoding/decoding utilities, and
+//! the main [`Table`] trait.
+
 use core::num::NonZeroUsize;
 
 use varing::{
-  DecodeError, EncodeError, InsufficientSpace, decode_u64_varint, encode_u64_varint_to, encoded_u64_varint_len
+  decode_u64_varint, encode_u64_varint_to, encoded_u64_varint_len, DecodeError, EncodeError,
+  InsufficientSpace,
 };
 
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -13,20 +20,76 @@ pub use freqd4c4::FreqD4C4;
 mod freqd4c4;
 
 /// A trait for frequency estimation tables.
+///
+/// This trait defines the core operations for probabilistic frequency counting
+/// data structures. Implementations track approximate counts of items based on
+/// their hash values.
+///
+/// # Example
+///
+/// ```rust
+/// # #[cfg(any(feature = "std", feature = "alloc"))] {
+/// use ctrminsketch::{FreqD4C4, Table};
+///
+/// let mut sketch: FreqD4C4 = FreqD4C4::boxed(256);
+/// let hash = 42u64;
+///
+/// // Track frequency
+/// sketch.increment(hash);
+/// sketch.increment(hash);
+///
+/// // Estimate frequency
+/// assert_eq!(sketch.estimate(hash), 2);
+///
+/// // Age all counters (halve them)
+/// sketch.reset();
+/// assert_eq!(sketch.estimate(hash), 1);
+///
+/// // Clear all counters
+/// sketch.clear();
+/// assert_eq!(sketch.estimate(hash), 0);
+/// # }
+/// ```
 pub trait Table {
   /// Type of counter used in the table.
+  ///
+  /// This is typically `u8` for 4-bit counters (values 0-15).
   type Count;
 
-  /// Increments the counter for the given hash.
+  /// Increments the frequency counter for the given hash.
+  ///
+  /// The hash should be a well-distributed 64-bit value. Multiple hash
+  /// functions are applied internally to update different counter positions.
+  ///
+  /// # Behavior
+  ///
+  /// - Counters saturate at their maximum value (implementation-specific)
+  /// - May trigger automatic aging (reset) when sample size is reached
   fn increment(&mut self, h: u64);
 
-  /// Estimates the count for the given hash.
+  /// Estimates the frequency count for the given hash.
+  ///
+  /// Returns a conservative estimate - the actual count is guaranteed to be
+  /// at least as high as the estimate, but may be higher due to hash collisions.
+  ///
+  /// # Returns
+  ///
+  /// The minimum of all counter positions associated with this hash.
   fn estimate(&self, h: u64) -> Self::Count;
 
-  /// Resets (ages) the table.
+  /// Resets (ages) the table by halving all counters.
+  ///
+  /// This operation:
+  /// - Divides all counters by 2 (integer division)
+  /// - Updates internal size tracking
+  /// - Maintains recency bias by reducing old item counts
+  ///
+  /// Automatically called when the sample size threshold is reached.
   fn reset(&mut self);
 
-  /// Clears the table.
+  /// Clears the table, setting all counters to zero.
+  ///
+  /// This completely resets the frequency tracking state.
   fn clear(&mut self);
 }
 
@@ -95,9 +158,11 @@ pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
       return Err(DecodeError::other("insufficient counters"));
     }
 
-    let table = Self::try_from_iterator(src[..want * 8].chunks_exact(8).map(|chunk| {
-      u64::from_le_bytes(chunk.try_into().unwrap())
-    }))?;
+    let table = Self::try_from_iterator(
+      src[..want * 8]
+        .chunks_exact(8)
+        .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())),
+    )?;
 
     Ok((want * 8, table))
   }
@@ -197,11 +262,14 @@ macro_rules! impl_d4c4_storage_for_array {
 }
 
 impl_d4c4_storage_for_array! {
-  8, 16, 32, 64,
+  8, 16, 32, 64, 128, 256, 512,
 }
 
-/// A wrapper to pretty-print the table as list of 16 4-bit counters.
-struct TableViewD4C4<'a>(&'a [u64]);
+/// A wrapper to pretty-print the table as a list of 16 4-bit counters per slot.
+///
+/// Each `u64` word contains 16 packed 4-bit counters. This debug view
+/// unpacks them for human-readable output.
+pub(crate) struct TableViewD4C4<'a>(pub(crate) &'a [u64]);
 
 impl core::fmt::Debug for TableViewD4C4<'_> {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

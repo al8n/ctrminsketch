@@ -8,10 +8,12 @@ documentation = "https://docs.rs/ctrminsketch"
 description = "Count-Min Sketch probabilistic data structures for frequency estimation"
 license = "MIT OR Apache-2.0"
 rust-version = "1.56"
+categories = ["data-structures", "algorithms", "no-std", "no-std::no-alloc"]
+keywords = ["count-min-sketch", "cms", "frequency-sketch", "cmsketch"]
 
 [[bench]]
-path = "benches/foo.rs"
-name = "foo"
+path = "benches/freqd4c4.rs"
+name = "freqd4c4"
 harness = false
 
 [features]
