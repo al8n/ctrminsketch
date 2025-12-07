@@ -592,6 +592,9 @@ mod tests {
 
   use super::*;
 
+  #[cfg(any(feature = "std", feature = "alloc"))]
+  use std::vec::Vec;
+
   fn random() -> u32 {
     getrandom::u32().expect("getrandom failed")
   }
