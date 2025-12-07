@@ -451,7 +451,7 @@ mod tests {
   }
 
   // Helper: make a sketch (like Java makeSketch)
-  fn make_sketch(maximum: u32) -> FreqD4C4 {
+  fn make_sketch(maximum: usize) -> FreqD4C4 {
     FreqD4C4::with_capacity(maximum)
   }
 
