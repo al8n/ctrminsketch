@@ -214,7 +214,6 @@ jobs:
           - macos-latest
         target:
           - x86_64-unknown-linux-gnu
-          - i686-unknown-linux-gnu
           - x86_64-apple-darwin
           - aarch64-apple-darwin
         cfg:
@@ -227,8 +226,6 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: i686-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -257,7 +254,6 @@ jobs:
           - macos-latest
         target:
           - x86_64-unknown-linux-gnu
-          - i686-unknown-linux-gnu
           - x86_64-apple-darwin
           - aarch64-apple-darwin
         cfg:
@@ -270,8 +266,6 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: i686-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5

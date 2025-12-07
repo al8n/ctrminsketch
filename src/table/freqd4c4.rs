@@ -204,12 +204,14 @@ where
   /// # Example
   ///
   /// ```rust
+  /// # #[cfg(any(feature = "std", feature = "alloc"))] {
   /// use ctrminsketch::{FreqD4C4, Table};
   ///
   /// // Create with capacity for ~512 items (uses heap allocation)
   /// let mut sketch: FreqD4C4<std::vec::Vec<u64>> = FreqD4C4::with_capacity(512);
   /// sketch.increment(42);
   /// assert_eq!(sketch.estimate(42), 1);
+  /// # }
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn with_capacity(capacity: usize) -> Self {
