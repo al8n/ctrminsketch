@@ -14,7 +14,7 @@ const RESET_MASK: u64 = 0x7777_7777_7777_7777;
 
 /// Implementation of [Caffeine's Frequency Sketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java).
 ///
-/// Depth: 4, Counter: 4-bit
+/// Depth: 4, Count: 4-bit
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(C)]
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -29,7 +29,7 @@ pub struct FreqD4C4<T = std::boxed::Box<[u64]>> {
 
 /// Implementation of [Caffeine's Frequency Sketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java).
 ///
-/// Depth: 4, Counter: 4-bit
+/// Depth: 4, Count: 4-bit
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(C)]
 #[cfg(not(any(feature = "std", feature = "alloc")))]
@@ -339,7 +339,7 @@ impl<T> Table for FreqD4C4<T>
 where
   T: D4C4Storage,
 {
-  type Counter = u8;
+  type Count = u8;
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn increment(&mut self, h: u64) {
@@ -377,7 +377,7 @@ where
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn estimate(&self, h: u64) -> Self::Counter {
+  fn estimate(&self, h: u64) -> Self::Count {
     let bh = spread_d4(h);
     let ch = rehash_d4(bh);
     let block = (bh & self.block_mask).wrapping_shl(3);
@@ -566,5 +566,26 @@ mod tests {
         assert!(popularity[6] <= popularity[8]);
       }
     }
+
+    #[cfg(feature = "std")]
+    {
+      println!("{:?}", sketch);
+    }
+
+    let encoded_len = sketch.encoded_len().get();
+    let mut buf = std::vec![0u8; encoded_len];
+    let written = sketch.encode_to(&mut buf).unwrap().get();
+    assert_eq!(written, encoded_len);
+    let (read, decoded) = FreqD4C4::decode(&buf).unwrap();
+    assert_eq!(read, written);
+    assert_eq!(sketch, decoded);
+
+    let compact_encoded_len = sketch.compact_encoded_len().get();
+    let mut compact_buf = std::vec![0u8; compact_encoded_len];
+    let compact_written = sketch.encode_compact_to(&mut compact_buf).unwrap().get();
+    assert_eq!(compact_written, compact_encoded_len);
+    let (compact_read, compact_decoded) = FreqD4C4::decode_compact(&compact_buf).unwrap();
+    assert_eq!(compact_read, compact_written);
+    assert_eq!(sketch, compact_decoded);
   }
 }

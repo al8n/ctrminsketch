@@ -6,10 +6,6 @@ use varing::{
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-mod cmsd4;
-
-#[cfg(any(feature = "std", feature = "alloc"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use freqd4c4::FreqD4C4;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -19,13 +15,13 @@ mod freqd4c4;
 /// A trait for frequency estimation tables.
 pub trait Table {
   /// Type of counter used in the table.
-  type Counter;
+  type Count;
 
   /// Increments the counter for the given hash.
   fn increment(&mut self, h: u64);
 
   /// Estimates the count for the given hash.
-  fn estimate(&self, h: u64) -> Self::Counter;
+  fn estimate(&self, h: u64) -> Self::Count;
 
   /// Resets (ages) the table.
   fn reset(&mut self);
@@ -243,7 +239,7 @@ impl core::fmt::Debug for SlotView<'_> {
       }
     }
 
-    ds.field("slot", &self.slot_idx)
+    ds.field("id", &self.slot_idx)
       .field("counters", &Counters(self.word))
       .finish()
   }
