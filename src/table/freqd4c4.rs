@@ -733,6 +733,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg_attr(miri, ignore)] // Miri is too slow for this test
   fn heavy_hitters() {
     #[cfg(any(feature = "std", feature = "alloc"))]
     {
