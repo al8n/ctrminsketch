@@ -85,7 +85,7 @@ pub struct FreqD4C4<T> {
 
 impl<T> core::fmt::Debug for FreqD4C4<T>
 where
-  T: D4C4Storage,
+  T: AsRef<[u64]>,
 {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -161,6 +161,8 @@ impl FreqD4C4<std::boxed::Box<[u64]>> {
   /// assert_eq!(sketch.estimate(42), 1);
   /// ```
   #[cfg_attr(not(tarpaulin), inline(always))]
+  #[cfg(any(feature = "std", feature = "alloc"))]
+  #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
   pub fn boxed(capacity: usize) -> Self {
     let capacity = capacity as u32;
 
@@ -275,10 +277,7 @@ impl<T> FreqD4C4<T> {
   }
 }
 
-impl<T> FreqD4C4<T>
-where
-  T: D4C4Storage,
-{
+impl<T: D4C4Storage + AsRef<[u64]>> FreqD4C4<T> {
   /// Encodes the sketch into the provided byte slice in compact form.
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn encode_compact_to(&self, dst: &mut [u8]) -> Result<NonZeroUsize, EncodeError> {
@@ -437,9 +436,17 @@ where
       },
     ))
   }
+}
 
+impl<T> FreqD4C4<T>
+where
+  T: AsMut<[u64]>,
+{
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn increment_at(&mut self, slot: usize, index: usize) -> bool {
+  fn increment_at(&mut self, slot: usize, index: usize) -> bool
+  where
+    T: AsMut<[u64]>,
+  {
     let offset = (index << 2) as u64;
     let mask = 0xF_u64 << offset;
 
@@ -457,7 +464,7 @@ where
 
 impl<T> Table for FreqD4C4<T>
 where
-  T: D4C4Storage,
+  T: D4C4Storage + AsMut<[u64]> + AsRef<[u64]>,
 {
   type Count = u8;
 
@@ -674,7 +681,7 @@ mod tests {
     reset_behavior_runner(FreqD4C4::<[u64; 64]>::new());
   }
 
-  fn reset_behavior_runner(mut sketch: FreqD4C4<impl D4C4Storage>) {
+  fn reset_behavior_runner(mut sketch: FreqD4C4<impl D4C4Storage + AsMut<[u64]> + AsRef<[u64]>>) {
     let mut reset_happened = false;
 
     for i in 1..(20 * sketch.table.as_ref().len() as u32) {
@@ -700,7 +707,7 @@ mod tests {
     full_runner(FreqD4C4::<[u64; 512]>::new());
   }
 
-  fn full_runner(mut sketch: FreqD4C4<impl D4C4Storage>) {
+  fn full_runner(mut sketch: FreqD4C4<impl D4C4Storage + AsMut<[u64]> + AsRef<[u64]>>) {
     // let mut sketch = make_sketch(512);
     sketch.sample_size = u32::MAX;
 
@@ -733,7 +740,7 @@ mod tests {
 
   fn heavy_hitters_inner<T>(mut sketch: FreqD4C4<T>)
   where
-    T: D4C4Storage + super::super::TryFromIterator<Item = u64> + Eq,
+    T: D4C4Storage + AsMut<[u64]> + AsRef<[u64]> + super::super::TryFromIterator<Item = u64> + Eq,
   {
     for i in 100..100_000u32 {
       sketch.increment(i as u64);

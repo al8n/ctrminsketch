@@ -11,12 +11,8 @@ use varing::{
   InsufficientSpace,
 };
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 pub use freqd4c4::FreqD4C4;
 
-#[cfg(any(feature = "std", feature = "alloc"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
 mod freqd4c4;
 
 /// A trait for frequency estimation tables.
@@ -98,14 +94,20 @@ mod sealed {
 }
 
 #[doc(hidden)]
-pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
+pub trait D4C4Storage: sealed::Sealed {
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn encoded_len(&self) -> usize {
+  fn encoded_len(&self) -> usize
+  where
+    Self: AsRef<[u64]>,
+  {
     self.as_ref().len() * 8
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn compact_encoded_len(&self) -> usize {
+  fn compact_encoded_len(&self) -> usize
+  where
+    Self: AsRef<[u64]>,
+  {
     self
       .as_ref()
       .iter()
@@ -114,7 +116,10 @@ pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn encode_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
+  fn encode_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError>
+  where
+    Self: AsRef<[u64]>,
+  {
     let mut offset = 0;
     let len = dst.len();
     for &w in self.as_ref() {
@@ -132,7 +137,10 @@ pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
-  fn encode_compact_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
+  fn encode_compact_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError>
+  where
+    Self: AsRef<[u64]>,
+  {
     let mut offset = 0;
     let len = dst.len();
     for &w in self.as_ref() {
@@ -170,7 +178,7 @@ pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn decode_compact(src: &[u8], want: usize) -> Result<(usize, Self), DecodeError>
   where
-    Self: TryFromIterator<Item = u64> + Sized,
+    Self: TryFromIterator<Item = u64> + Sized + AsRef<[u64]>,
   {
     let mut num_elements = 0;
     let mut offset = 0;
@@ -357,7 +365,7 @@ const _: () = {
   impl WithCapacity for std::vec::Vec<u64> {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn with_capacity(capacity: usize) -> Self {
-      vec![0u64; capacity]
+      std::vec![0u64; capacity]
     }
   }
 };
