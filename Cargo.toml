@@ -1,13 +1,13 @@
 [package]
 name = "ctrminsketch"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/al8n/ctrminsketch"
 homepage = "https://github.com/al8n/ctrminsketch"
 documentation = "https://docs.rs/ctrminsketch"
-description = "A template for creating Rust open-source repo on GitHub"
+description = "Count-Min Sketch probabilistic data structures for frequency estimation"
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.56"
 
 [[bench]]
 path = "benches/foo.rs"
@@ -24,10 +24,8 @@ varing = { version = "0.10", default-features = false }
 
 
 [dev-dependencies]
-criterion = "0.7"
-tempfile = "3"
+criterion = "0.8"
 getrandom = { version = "0.3", default-features = false }
-crc32fast = { version = "1", default-features = false }
 
 
 [profile.bench]

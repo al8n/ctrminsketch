@@ -3,7 +3,7 @@
 </div>
 <div align="center">
 
-Counter-Min-Sketch implementation
+Count-Min Sketch probabilistic data structures for frequency estimation
 
 [<img alt="github" src="https://img.shields.io/badge/github-al8n/ctrminsketch-8da0cb?style=for-the-badge&logo=Github" height="22">][Github-url]
 <img alt="LoC" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fal8n%2F327b2a8aef9003246e45c6e47fe63937%2Fraw%2Fctrminsketch" height="22">
@@ -15,32 +15,184 @@ Counter-Min-Sketch implementation
 [<img alt="crates.io" src="https://img.shields.io/crates/d/ctrminsketch?color=critical&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNjQ1MTE3MzMyOTU5IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjM0MjEiIGRhdGEtc3BtLWFuY2hvci1pZD0iYTMxM3guNzc4MTA2OS4wLmkzIiB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj48ZGVmcz48c3R5bGUgdHlwZT0idGV4dC9jc3MiPjwvc3R5bGU+PC9kZWZzPjxwYXRoIGQ9Ik00NjkuMzEyIDU3MC4yNHYtMjU2aDg1LjM3NnYyNTZoMTI4TDUxMiA3NTYuMjg4IDM0MS4zMTIgNTcwLjI0aDEyOHpNMTAyNCA2NDAuMTI4QzEwMjQgNzgyLjkxMiA5MTkuODcyIDg5NiA3ODcuNjQ4IDg5NmgtNTEyQzEyMy45MDQgODk2IDAgNzYxLjYgMCA1OTcuNTA0IDAgNDUxLjk2OCA5NC42NTYgMzMxLjUyIDIyNi40MzIgMzAyLjk3NiAyODQuMTYgMTk1LjQ1NiAzOTEuODA4IDEyOCA1MTIgMTI4YzE1Mi4zMiAwIDI4Mi4xMTIgMTA4LjQxNiAzMjMuMzkyIDI2MS4xMkM5NDEuODg4IDQxMy40NCAxMDI0IDUxOS4wNCAxMDI0IDY0MC4xOTJ6IG0tMjU5LjItMjA1LjMxMmMtMjQuNDQ4LTEyOS4wMjQtMTI4Ljg5Ni0yMjIuNzItMjUyLjgtMjIyLjcyLTk3LjI4IDAtMTgzLjA0IDU3LjM0NC0yMjQuNjQgMTQ3LjQ1NmwtOS4yOCAyMC4yMjQtMjAuOTI4IDIuOTQ0Yy0xMDMuMzYgMTQuNC0xNzguMzY4IDEwNC4zMi0xNzguMzY4IDIxNC43MiAwIDExNy45NTIgODguODMyIDIxNC40IDE5Ni45MjggMjE0LjRoNTEyYzg4LjMyIDAgMTU3LjUwNC03NS4xMzYgMTU3LjUwNC0xNzEuNzEyIDAtODguMDY0LTY1LjkyLTE2NC45MjgtMTQ0Ljk2LTE3MS43NzZsLTI5LjUwNC0yLjU2LTUuODg4LTMwLjk3NnoiIGZpbGw9IiNmZmZmZmYiIHAtaWQ9IjM0MjIiIGRhdGEtc3BtLWFuY2hvci1pZD0iYTMxM3guNzc4MTA2OS4wLmkwIiBjbGFzcz0iIj48L3BhdGg+PC9zdmc+&style=for-the-badge" height="22">][crates-url]
 <img alt="license" src="https://img.shields.io/badge/License-Apache%202.0/MIT-blue.svg?style=for-the-badge&fontColor=white&logoColor=f5c076&logo=data:image/svg+xml;base64,PCFET0NUWVBFIHN2ZyBQVUJMSUMgIi0vL1czQy8vRFREIFNWRyAxLjEvL0VOIiAiaHR0cDovL3d3dy53My5vcmcvR3JhcGhpY3MvU1ZHLzEuMS9EVEQvc3ZnMTEuZHRkIj4KDTwhLS0gVXBsb2FkZWQgdG86IFNWRyBSZXBvLCB3d3cuc3ZncmVwby5jb20sIFRyYW5zZm9ybWVkIGJ5OiBTVkcgUmVwbyBNaXhlciBUb29scyAtLT4KPHN2ZyBmaWxsPSIjZmZmZmZmIiBoZWlnaHQ9IjgwMHB4IiB3aWR0aD0iODAwcHgiIHZlcnNpb249IjEuMSIgaWQ9IkNhcGFfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmlld0JveD0iMCAwIDI3Ni43MTUgMjc2LjcxNSIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSIgc3Ryb2tlPSIjZmZmZmZmIj4KDTxnIGlkPSJTVkdSZXBvX2JnQ2FycmllciIgc3Ryb2tlLXdpZHRoPSIwIi8+Cg08ZyBpZD0iU1ZHUmVwb190cmFjZXJDYXJyaWVyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KDTxnIGlkPSJTVkdSZXBvX2ljb25DYXJyaWVyIj4gPGc+IDxwYXRoIGQ9Ik0xMzguMzU3LDBDNjIuMDY2LDAsMCw2Mi4wNjYsMCwxMzguMzU3czYyLjA2NiwxMzguMzU3LDEzOC4zNTcsMTM4LjM1N3MxMzguMzU3LTYyLjA2NiwxMzguMzU3LTEzOC4zNTcgUzIxNC42NDgsMCwxMzguMzU3LDB6IE0xMzguMzU3LDI1OC43MTVDNzEuOTkyLDI1OC43MTUsMTgsMjA0LjcyMywxOCwxMzguMzU3UzcxLjk5MiwxOCwxMzguMzU3LDE4IHMxMjAuMzU3LDUzLjk5MiwxMjAuMzU3LDEyMC4zNTdTMjA0LjcyMywyNTguNzE1LDEzOC4zNTcsMjU4LjcxNXoiLz4gPHBhdGggZD0iTTE5NC43OTgsMTYwLjkwM2MtNC4xODgtMi42NzctOS43NTMtMS40NTQtMTIuNDMyLDIuNzMyYy04LjY5NCwxMy41OTMtMjMuNTAzLDIxLjcwOC0zOS42MTQsMjEuNzA4IGMtMjUuOTA4LDAtNDYuOTg1LTIxLjA3OC00Ni45ODUtNDYuOTg2czIxLjA3Ny00Ni45ODYsNDYuOTg1LTQ2Ljk4NmMxNS42MzMsMCwzMC4yLDcuNzQ3LDM4Ljk2OCwyMC43MjMgYzIuNzgyLDQuMTE3LDguMzc1LDUuMjAxLDEyLjQ5NiwyLjQxOGM0LjExOC0yLjc4Miw1LjIwMS04LjM3NywyLjQxOC0xMi40OTZjLTEyLjExOC0xNy45MzctMzIuMjYyLTI4LjY0NS01My44ODItMjguNjQ1IGMtMzUuODMzLDAtNjQuOTg1LDI5LjE1Mi02NC45ODUsNjQuOTg2czI5LjE1Miw2NC45ODYsNjQuOTg1LDY0Ljk4NmMyMi4yODEsMCw0Mi43NTktMTEuMjE4LDU0Ljc3OC0zMC4wMDkgQzIwMC4yMDgsMTY5LjE0NywxOTguOTg1LDE2My41ODIsMTk0Ljc5OCwxNjAuOTAzeiIvPiA8L2c+IDwvZz4KDTwvc3ZnPg==" height="22">
 
-English | [简体中文][zh-cn-url]
-
 </div>
 
+## About
+
+`ctrminsketch` provides Rust implementations of Count-Min Sketch algorithms - space-efficient probabilistic data structures for approximate frequency counting. These data structures are widely used in caching algorithms, network monitoring, and stream processing where exact counts would be prohibitively expensive.
+
+### Current Implementations
+
+- **FreqD4C4**: Caffeine's Frequency Sketch (Depth: 4, Count: 4-bit) - adapted from [Caffeine's Java implementation](https://github.com/ben-manes/caffeine)
+
+## Features
+
+- **Space-Efficient**: Uses 4-bit counters packed into u64 words (16 counters per word)
+- **Multiple Storage Backends**:
+  - Fixed-size arrays (`[u64; N]`) for `no_std` environments
+  - Dynamic allocation (`Vec<u64>`, `Box<[u64]>`) with `std` or `alloc` features
+- **No-Std Compatible**: Works in embedded and bare-metal environments
+- **Automatic Aging**: Halves all counters when sample size is reached to maintain recency
+- **Serialization**: Both fixed-size and compact variable-length encoding
+- **Well-Tested**: Comprehensive test suite with Miri, sanitizers, and cross-platform CI
+
 ## Installation
+
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 ctrminsketch = "0.1"
 ```
 
-## Features
-- [x] Create a Rust open-source repo fast 
+### Feature Flags
 
-#### License
+- `std` (default): Enable standard library support
+- `alloc`: Enable allocation without full `std` (for `no_std` + `alloc`)
 
-`ctrminsketch` is under the terms of both the MIT license and the
-Apache License (Version 2.0).
+For `no_std` environments:
 
-See [LICENSE-APACHE](LICENSE-APACHE), [LICENSE-MIT](LICENSE-MIT) for details.
+```toml
+[dependencies]
+ctrminsketch = { version = "0.1", default-features = false }
+```
 
-Copyright (c) 2021 Al Liu.
+## Usage
+
+### Basic Example
+
+```rust
+use ctrminsketch::{FreqD4C4, Table};
+use std::hash::{Hash, Hasher};
+
+// Create a sketch with capacity for ~512 items
+let mut sketch = FreqD4C4::with_capacity(512);
+
+// Helper function to hash items
+fn hash_item<T: Hash>(item: &T) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    item.hash(&mut hasher);
+    hasher.finish()
+}
+
+// Track item frequencies
+sketch.increment(hash_item(&"apple"));
+sketch.increment(hash_item(&"apple"));
+sketch.increment(hash_item(&"banana"));
+sketch.increment(hash_item(&"apple"));
+
+// Estimate frequencies
+assert_eq!(sketch.estimate(hash_item(&"apple")), 3);
+assert_eq!(sketch.estimate(hash_item(&"banana")), 1);
+assert_eq!(sketch.estimate(hash_item(&"cherry")), 0);
+```
+
+### Storage Options
+
+```rust
+use ctrminsketch::{FreqD4C4, Table};
+
+// Fixed-size array (no allocations, works in no_std)
+let mut sketch: FreqD4C4<[u64; 64]> = FreqD4C4::new();
+
+// Dynamic allocation (requires std or alloc feature)
+let mut sketch = FreqD4C4::with_capacity(1024);
+```
+
+### Serialization
+
+```rust
+use ctrminsketch::{FreqD4C4, Table};
+
+let mut sketch = FreqD4C4::with_capacity(512);
+// ... add items ...
+
+// Fixed-size encoding (8 bytes per u64)
+let mut buffer = vec![0u8; sketch.encoded_len()];
+sketch.encode_to(&mut buffer).unwrap();
+
+// Compact encoding (variable-length, more space-efficient)
+let mut compact_buffer = vec![0u8; sketch.encoded_compact_len()];
+sketch.encode_compact_to(&mut compact_buffer).unwrap();
+
+// Decode
+let decoded = FreqD4C4::decode(&buffer).unwrap();
+let decoded_compact = FreqD4C4::decode_compact(&compact_buffer).unwrap();
+```
+
+## How It Works
+
+The Count-Min Sketch uses multiple hash functions to map items to counters. When incrementing:
+
+1. Hash the item with 4 different hash functions
+2. Increment the counter at each hash position (max value: 15)
+3. When estimating, return the minimum of all 4 counters
+
+This provides a **conservative estimate** - the sketch never underestimates frequency, but may overestimate due to hash collisions.
+
+### Automatic Aging
+
+When the number of increments reaches 10× the capacity, all counters are halved. This:
+
+- Prevents counter saturation
+- Maintains recency bias (recent items weighted more heavily)
+- Keeps the sketch useful for evolving data streams
+
+## Use Cases
+
+- **Caching**: LRU/LFU eviction policies (as used in Caffeine cache)
+- **Network Monitoring**: Track packet/flow frequencies
+- **Stream Processing**: Heavy-hitter detection
+- **Rate Limiting**: Approximate request counting
+- **Anomaly Detection**: Identify unusual patterns in data streams
+
+## Performance
+
+The implementation is highly optimized:
+
+- Uses bit-packing for space efficiency
+- Inline functions for hot paths
+- SIMD-friendly layout
+- Minimal branching in critical loops
+
+See `benches/` for benchmark code.
+
+## Platform Support
+
+Tested on:
+
+- Linux, macOS, Windows
+- x86, x86-64, ARM, ARM64, RISC-V, PowerPC
+- WebAssembly (WASI, Emscripten)
+- Android
+
+See [CI configuration](.github/workflows/ci.yml) for the full matrix.
+
+## Minimum Supported Rust Version (MSRV)
+
+Rust 1.56 or later.
+
+## License
+
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+
+## Acknowledgments
+
+The `FreqD4C4` implementation is adapted from [Caffeine's FrequencySketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java) by Ben Manes (Apache-2.0 license).
+
+Copyright (c) 2025 Al Liu.
 
 [Github-url]: https://github.com/al8n/ctrminsketch/
 [CI-url]: https://github.com/al8n/ctrminsketch/actions/workflows/ci.yml
 [doc-url]: https://docs.rs/ctrminsketch
 [crates-url]: https://crates.io/crates/ctrminsketch
 [codecov-url]: https://app.codecov.io/gh/al8n/ctrminsketch/
-[zh-cn-url]: https://github.com/al8n/ctrminsketch/tree/main/README-zh_CN.md
