@@ -1,17 +1,19 @@
 [package]
-name = "template-rs"
-version = "0.0.0"
+name = "ctrminsketch"
+version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/al8n/template-rs"
-homepage = "https://github.com/al8n/template-rs"
-documentation = "https://docs.rs/template-rs"
-description = "A template for creating Rust open-source repo on GitHub"
+repository = "https://github.com/al8n/ctrminsketch"
+homepage = "https://github.com/al8n/ctrminsketch"
+documentation = "https://docs.rs/ctrminsketch"
+description = "Count-Min Sketch probabilistic data structures for frequency estimation"
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.56"
+categories = ["data-structures", "algorithms", "no-std", "no-std::no-alloc"]
+keywords = ["count-min-sketch", "cms", "frequency-sketch", "cmsketch"]
 
 [[bench]]
-path = "benches/foo.rs"
-name = "foo"
+path = "benches/freqd4c4.rs"
+name = "freqd4c4"
 harness = false
 
 [features]
@@ -20,10 +22,13 @@ alloc = []
 std = []
 
 [dependencies]
+varing = { version = "0.10", default-features = false }
+
 
 [dev-dependencies]
-criterion = "0.7"
-tempfile = "3"
+criterion = "0.8"
+getrandom = { version = "0.3", default-features = false }
+
 
 [profile.bench]
 opt-level = 3
@@ -43,6 +48,5 @@ rustdoc-args = ["--cfg", "docsrs"]
 rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = [
-  'cfg(all_tests)',
   'cfg(tarpaulin)',
 ] }
