@@ -95,14 +95,16 @@ impl<T> FreqD4C4<T>
 where
   T: WithCapacity,
 {
-  /// Creates a new `FreqD4C4` with the given cache capacity.
+  /// Creates a new `FreqD4C4` with the given capacity.
   #[cfg_attr(not(tarpaulin), inline(always))]
-  pub fn with_capacity(cache_capacity: u32) -> Self
+  pub fn with_capacity(capacity: usize) -> Self
   where
     T: WithCapacity,
   {
+    let capacity = capacity as u32;
+
     // clamp max size like Caffeine
-    let maximum = cache_capacity.min(i32::MAX as u32 >> 1);
+    let maximum = capacity.min(i32::MAX as u32 >> 1);
 
     // table length = next power of two >= maximum, min 8
     let table_len = maximum.next_power_of_two().max(8);
@@ -110,7 +112,7 @@ where
     let table = T::with_capacity(table_len as usize);
 
     // sampleSize = 10 * maximum (bounded)
-    let sample_size = if cache_capacity == 0 {
+    let sample_size = if capacity == 0 {
       10
     } else {
       (10u32.wrapping_mul(maximum)).min(i32::MAX as u32)
