@@ -1,10 +1,10 @@
 [package]
-name = "casketch"
+name = "ctrminsketch"
 version = "0.0.0"
 edition = "2021"
-repository = "https://github.com/al8n/casketch"
-homepage = "https://github.com/al8n/casketch"
-documentation = "https://docs.rs/casketch"
+repository = "https://github.com/al8n/ctrminsketch"
+homepage = "https://github.com/al8n/ctrminsketch"
+documentation = "https://docs.rs/ctrminsketch"
 description = "A template for creating Rust open-source repo on GitHub"
 license = "MIT OR Apache-2.0"
 rust-version = "1.73"
@@ -20,11 +20,14 @@ alloc = []
 std = []
 
 [dependencies]
+varing = { version = "0.10", default-features = false }
+
 
 [dev-dependencies]
 criterion = "0.7"
 tempfile = "3"
-ahash = { version = "0.8", default-features = false }
+getrandom = { version = "0.3", default-features = false }
+crc32fast = { version = "1", default-features = false }
 
 
 [profile.bench]

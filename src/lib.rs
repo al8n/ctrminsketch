@@ -10,6 +10,7 @@ extern crate alloc as std;
 #[cfg(feature = "std")]
 extern crate std;
 
-pub use table::*;
+pub use table::{FreqD4C4, Table};
+pub use varing::{DecodeError, EncodeError, InsufficientSpace};
 
 mod table;

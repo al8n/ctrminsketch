@@ -2,10 +2,15 @@
 // Caffeine's `FrequencySketch` (Apache-2.0):
 // https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java
 
+use core::num::NonZeroUsize;
+
 use super::{D4C4Storage, FixedSizeStorage, Table, TableViewD4C4, WithCapacity};
+use varing::{
+  decode_u32_varint, encode_u32_varint_to,
+  encoded_u32_varint_len, DecodeError, EncodeError, InsufficientSpace,
+};
 
 const RESET_MASK: u64 = 0x7777_7777_7777_7777;
-const ONE_MASK: u64 = 0x1111_1111_1111_1111;
 
 /// Implementation of [Caffeine's Frequency Sketch](https://github.com/ben-manes/caffeine/blob/master/caffeine/src/main/java/com/github/benmanes/caffeine/cache/FrequencySketch.java).
 ///
@@ -122,14 +127,193 @@ where
   }
 }
 
-impl<T> FreqD4C4<T>
-where
-  T: D4C4Storage,
-{
+impl<T> FreqD4C4<T> {
   /// Returns the mask
   #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn mask(&self) -> u32 {
     self.block_mask
+  }
+
+  /// Returns the current size
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn size(&self) -> u32 {
+    self.size
+  }
+
+  /// Returns the sample size
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn sample_size(&self) -> u32 {
+    self.sample_size
+  }
+
+  /// Returns a reference to the underlying table storage.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub const fn table(&self) -> &T {
+    &self.table
+  }
+}
+
+impl<T> FreqD4C4<T>
+where
+  T: D4C4Storage,
+{
+  /// Encodes the sketch into the provided byte slice in compact form.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn encode_compact_to(&self, dst: &mut [u8]) -> Result<NonZeroUsize, EncodeError> {
+    let cap = dst.len();
+    let encoded_len = self.compact_encoded_len();
+    if cap < encoded_len.get() {
+      return Err(EncodeError::InsufficientSpace(InsufficientSpace::new(
+        encoded_len,
+        cap,
+      )));
+    }
+
+    let mut offset = 0;
+    offset += encode_u32_varint_to(self.size, &mut dst[offset..])?.get();
+    offset += encode_u32_varint_to(self.sample_size, &mut dst[offset..])?.get();
+    offset += encode_u32_varint_to(self.block_mask, &mut dst[offset..])?.get();
+    offset += self.table.encode_compact_to(&mut dst[offset..])?;
+    // Safety: offset > 0
+    Ok(unsafe { NonZeroUsize::new_unchecked(offset) })
+  }
+
+  /// Returns the encoded length in bytes in compact form.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn compact_encoded_len(&self) -> NonZeroUsize {
+    // Safety: encoded length is always > 0
+    unsafe {
+      NonZeroUsize::new_unchecked(
+        encoded_u32_varint_len(self.size).get()
+          + encoded_u32_varint_len(self.sample_size).get()
+          + encoded_u32_varint_len(self.block_mask).get()
+          + { self.table.compact_encoded_len() },
+      )
+    }
+  }
+
+  /// Encodes the sketch into the provided byte slice in fixed form.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn encode_to(&self, dst: &mut [u8]) -> Result<NonZeroUsize, EncodeError> {
+    let cap = dst.len();
+    let encoded_len = self.encoded_len();
+    if cap < encoded_len.get() {
+      return Err(EncodeError::InsufficientSpace(InsufficientSpace::new(
+        encoded_len,
+        cap,
+      )));
+    }
+
+    let mut offset = 0;
+    dst[offset..offset + 4].copy_from_slice(&self.size.to_le_bytes());
+    offset += 4;
+    dst[offset..offset + 4].copy_from_slice(&self.sample_size.to_le_bytes());
+    offset += 4;
+    dst[offset..offset + 4].copy_from_slice(&self.block_mask.to_le_bytes());
+    offset += 4;
+    offset += self.table.encode_to(&mut dst[offset..])?;
+    // Safety: offset > 0
+    Ok(unsafe { NonZeroUsize::new_unchecked(offset) })
+  }
+
+  /// Returns the encoded length in bytes in fixed form.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn encoded_len(&self) -> NonZeroUsize {
+    // Safety: encoded length is always > 0
+    unsafe {
+      NonZeroUsize::new_unchecked(
+        4 + // size
+        4 + // sample_size
+        4 + // block_mask
+        self.table.encoded_len(),
+      )
+    }
+  }
+
+  /// Decodes the sketch from the provided byte slice in fixed form.
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  pub fn decode(src: &[u8]) -> Result<(usize, Self), DecodeError>
+  where
+    T: super::TryFromIterator<Item = u64>,
+  {
+    let mut offset = 0;
+
+    if src.len() < offset + 4 {
+      return Err(DecodeError::InsufficientData {
+        available: src.len(),
+      });
+    }
+
+    let size = u32::from_le_bytes(src[offset..offset + 4].try_into().unwrap());
+    offset += 4;
+
+    if src.len() < offset + 4 {
+      return Err(DecodeError::InsufficientData {
+        available: src.len(),
+      });
+    }
+    let sample_size = u32::from_le_bytes(src[offset..offset + 4].try_into().unwrap());
+    offset += 4;
+    if src.len() < offset + 4 {
+      return Err(DecodeError::InsufficientData {
+        available: src.len(),
+      });
+    }
+    let block_mask = u32::from_le_bytes(src[offset..offset + 4].try_into().unwrap());
+    offset += 4;
+
+    let table_len = (block_mask + 1) << 3;
+    if src.len() < offset + (table_len as usize * 8) {
+      return Err(DecodeError::InsufficientData {
+        available: src.len(),
+      });
+    }
+
+    let (read, table) = T::decode(&src[offset..], table_len as usize)?;
+    offset += read;
+
+    Ok((
+      offset,
+      Self {
+        size,
+        sample_size,
+        block_mask,
+        pad: 0,
+        table,
+      },
+    ))
+  }
+
+  /// Decodes the sketch from the provided byte slice in compact form.
+  pub fn decode_compact(src: &[u8]) -> Result<(usize, Self), DecodeError>
+  where
+    T: super::TryFromIterator<Item = u64>,
+  {
+    let mut offset = 0;
+
+    let (sz_len, size) = decode_u32_varint(&src[offset..])?;
+    offset += sz_len.get();
+
+    let (ss_len, sample_size) = decode_u32_varint(&src[offset..])?;
+    offset += ss_len.get();
+
+    let (bm_len, block_mask) = decode_u32_varint(&src[offset..])?;
+    offset += bm_len.get();
+
+    let table_len = (block_mask + 1) << 3;
+    let (read, table) = T::decode_compact(&src[offset..], table_len as usize)?;
+    offset += read;
+
+    Ok((
+      offset,
+      Self {
+        size,
+        sample_size,
+        block_mask,
+        pad: 0,
+        table,
+      },
+    ))
   }
 
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -220,6 +404,8 @@ where
 
   #[cfg_attr(not(tarpaulin), inline(always))]
   fn reset(&mut self) {
+    const ONE_MASK: u64 = 0x1111_1111_1111_1111;
+
     let mut odd_count = 0u32;
     for w in self.table.as_mut() {
       odd_count += (*w & ONE_MASK).count_ones();
@@ -253,21 +439,13 @@ const fn spread_d4(h: u64) -> u32 {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "alloc"))]
 mod tests {
 
   use super::*;
-  use core::hash::{Hash, BuildHasher, BuildHasherDefault};
 
-  #[cfg(not(feature = "std"))]
-  type DH = ahash::AHasher;
-  #[cfg(feature = "std")]
-  type DH = std::hash::DefaultHasher;
-
-  fn hasher<T: Hash>() -> impl Fn(T) -> u64 {
-    let build_hasher = BuildHasherDefault::<DH>::default();
-    move |key| {
-      build_hasher.hash_one(&key)
-    }
+  fn random() -> u32 {
+    getrandom::u32().expect("getrandom failed")
   }
 
   // Helper: make a sketch (like Java makeSketch)
@@ -278,118 +456,113 @@ mod tests {
   #[test]
   fn increment_once() {
     let mut sketch = make_sketch(512);
-    let x = 12345;
-
-    let hasher = hasher();
-    let h = hasher(x);
-    sketch.increment(h);
-    assert_eq!(sketch.estimate(h), 1);
+    let h = random();
+    sketch.increment(h as u64);
+    assert_eq!(sketch.estimate(h as u64), 1);
   }
 
   #[test]
   fn increment_max() {
     let mut sketch = make_sketch(512);
-    let x = 99999;
-    let hasher = hasher();
-    let h = hasher(x);
+    let h = random();
     for _ in 0..20 {
-      sketch.increment(h);
+      sketch.increment(h as u64);
     }
-    assert_eq!(sketch.estimate(h), 15);
+    assert_eq!(sketch.estimate(h as u64), 15);
   }
 
-  // #[test]
-  // fn increment_distinct() {
-  //   let mut sketch = make_sketch(512);
+  #[test]
+  fn increment_distinct() {
+    let mut sketch = make_sketch(512);
 
-  //   let a = 200;
-  //   let b = 201;
-  //   let c = 202;
+    let a = random();
+    let b = a + 1;
+    let c = b + 1;
 
-  //   sketch.increment(a);
-  //   sketch.increment(b);
+    sketch.increment(a as u64);
+    sketch.increment(b as u64);
 
-  //   assert_eq!(sketch.estimate(hash_u64(&a)), 1);
-  //   assert_eq!(sketch.estimate(hash_u64(&b)), 1);
-  //   assert_eq!(sketch.estimate(hash_u64(&c)), 0);
-  // }
+    assert_eq!(sketch.estimate(a as u64), 1);
+    assert_eq!(sketch.estimate(b as u64), 1);
+    assert_eq!(sketch.estimate(c as u64), 0);
+  }
 
-  // #[test]
-  // fn increment_zero() {
-  //   let mut sketch = make_sketch(512);
+  #[test]
+  fn increment_zero() {
+    let mut sketch = make_sketch(512);
 
-  //   sketch.increment(0);
-  //   assert_eq!(sketch.estimate(hash_u64(&0)), 1);
-  // }
+    sketch.increment(0);
+    assert_eq!(sketch.estimate(0), 1);
+  }
 
-  // #[test]
-  // fn reset_behavior() {
-  //   let mut sketch = make_sketch(64);
-  //   let mut reset_happened = false;
+  #[test]
+  fn reset_behavior() {
+    let mut sketch = make_sketch(64);
+    let mut reset_happened = false;
 
-  //   for i in 1..(20 * sketch.table.len() as u64) {
-  //     sketch.increment(i);
-  //     if sketch.size as u64 != i {
-  //       reset_happened = true;
-  //       break;
-  //     }
-  //   }
+    for i in 1..(20 * sketch.table.len() as u32) {
+      sketch.increment(i as u64);
+      if sketch.size != i {
+        reset_happened = true;
+        break;
+      }
+    }
 
-  //   assert!(reset_happened);
-  //   assert!(sketch.size <= sketch.sample_size / 2);
-  // }
+    assert!(reset_happened);
+    assert!(sketch.size <= sketch.sample_size / 2);
+  }
 
-  // #[test]
-  // fn full() {
-  //   let mut sketch = make_sketch(512);
-  //   sketch.sample_size = u32::MAX;
+  #[test]
+  fn full() {
+    let mut sketch = make_sketch(512);
+    sketch.sample_size = u32::MAX;
 
-  //   for i in 0..100_000 {
-  //     sketch.increment(i);
-  //   }
+    for i in 0..100_000 {
+      sketch.increment(i as u64);
+    }
 
-  //   // Every slot should have 64 bits = all counters = 4-bit full
-  //   for slot in sketch.table.iter() {
-  //     assert_eq!(slot.count_ones(), 64); // full bits
-  //   }
+    // Every slot should have 64 bits = all counters = 4-bit full
+    for slot in sketch.table.iter() {
+      assert_eq!(slot.count_ones(), 64); // full bits
+    }
 
-  //   sketch.reset();
+    sketch.reset();
 
-  //   for slot in sketch.table.iter() {
-  //     assert_eq!(*slot, RESET_MASK);
-  //   }
-  // }
+    for slot in sketch.table.iter() {
+      assert_eq!(*slot, RESET_MASK);
+    }
+  }
 
-  // #[test]
-  // fn heavy_hitters() {
-  //   let mut sketch = make_sketch(512);
+  #[test]
+  fn heavy_hitters() {
+    let mut sketch = make_sketch(512);
 
-  //   for i in 100..100_000u64 {
-  //     sketch.increment(i);
-  //   }
+    for i in 100..100_000u32 {
+      sketch.increment(i as u64);
+    }
 
-  //   for i in (0..10u64).step_by(2) {
-  //     for _ in 0..i {
-  //       sketch.increment(i);
-  //     }
-  //   }
+    for i in (0..10u32).step_by(2) {
+      for _ in 0..i {
+        sketch.increment(i as u64);
+      }
+    }
 
-  //   let mut popularity = [0u8; 10];
-  //   for i in 0..10 {
-  //     popularity[i] = sketch.estimate(hash_u64(&i));
-  //   }
+    let mut popularity = [0u8; 10];
+    for (i, p) in popularity.iter_mut().enumerate() {
+      *p = sketch.estimate(i as u64);
+    }
 
-  //   // Exactly match Java logic
-  //   for i in 0..10 {
-  //     if matches!(i, 0 | 1 | 3 | 5 | 7 | 9) {
-  //       assert!(popularity[i] <= popularity[2]);
-  //     } else if i == 2 {
-  //       assert!(popularity[2] <= popularity[4]);
-  //     } else if i == 4 {
-  //       assert!(popularity[4] <= popularity[6]);
-  //     } else if i == 6 {
-  //       assert!(popularity[6] <= popularity[8]);
-  //     }
-  //   }
-  // }
+    // Exactly match Java logic
+    for i in 0..10 {
+      if matches!(i, 0 | 1 | 3 | 5 | 7 | 9) {
+        assert!(popularity[i] <= popularity[2]);
+      } else if i == 2 {
+        assert!(popularity[2] <= popularity[4]);
+      } else if i == 4 {
+        assert!(popularity[4] <= popularity[6]);
+      } else if i == 6 {
+        assert!(popularity[6] <= popularity[8]);
+      }
+    }
+  }
 }

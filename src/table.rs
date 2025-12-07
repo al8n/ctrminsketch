@@ -1,6 +1,12 @@
+use core::num::NonZeroUsize;
+
+use varing::{
+  DecodeError, EncodeError, InsufficientSpace, decode_u64_varint, encode_u64_varint_to, encoded_u64_varint_len
+};
+
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
-mod cms4;
+mod cmsd4;
 
 #[cfg(any(feature = "std", feature = "alloc"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "std", feature = "alloc"))))]
@@ -33,7 +39,111 @@ mod sealed {
 }
 
 #[doc(hidden)]
-pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {}
+pub trait D4C4Storage: AsRef<[u64]> + AsMut<[u64]> + sealed::Sealed {
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn encoded_len(&self) -> usize {
+    self.as_ref().len() * 8
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn compact_encoded_len(&self) -> usize {
+    self
+      .as_ref()
+      .iter()
+      .map(|&w| varing::encoded_u64_varint_len(w).get())
+      .sum()
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn encode_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
+    let mut offset = 0;
+    let len = dst.len();
+    for &w in self.as_ref() {
+      if offset + 8 > len {
+        return Err(EncodeError::InsufficientSpace(InsufficientSpace::new(
+          // Safety: request must greater than 0, if we enter here.
+          unsafe { NonZeroUsize::new_unchecked(self.encoded_len()) },
+          len,
+        )));
+      }
+      dst[offset..offset + 8].copy_from_slice(&w.to_le_bytes());
+      offset += 8;
+    }
+    Ok(offset)
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn encode_compact_to(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
+    let mut offset = 0;
+    let len = dst.len();
+    for &w in self.as_ref() {
+      let encoded_len = encoded_u64_varint_len(w).get();
+      if offset + encoded_len > len {
+        return Err(EncodeError::InsufficientSpace(InsufficientSpace::new(
+          // Safety: request must greater than 0, if we enter here.
+          unsafe { NonZeroUsize::new_unchecked(self.compact_encoded_len()) },
+          len,
+        )));
+      }
+      offset += encode_u64_varint_to(w, &mut dst[offset..offset + encoded_len])?.get();
+    }
+    Ok(offset)
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn decode(src: &[u8], want: usize) -> Result<(usize, Self), DecodeError>
+  where
+    Self: TryFromIterator<Item = u64> + Sized,
+  {
+    if src.len() < want * 8 {
+      return Err(DecodeError::other("insufficient counters"));
+    }
+
+    let table = Self::try_from_iterator(src[..want * 8].chunks_exact(8).map(|chunk| {
+      u64::from_le_bytes(chunk.try_into().unwrap())
+    }))?;
+
+    Ok((want * 8, table))
+  }
+
+  #[cfg_attr(not(tarpaulin), inline(always))]
+  fn decode_compact(src: &[u8], want: usize) -> Result<(usize, Self), DecodeError>
+  where
+    Self: TryFromIterator<Item = u64> + Sized,
+  {
+    let mut num_elements = 0;
+    let mut offset = 0;
+    let table = Self::try_from_iterator(core::iter::from_fn(|| {
+      // we need to check both src.len() and num_elements here
+      // as we don't know how many bytes each u64 takes
+      if offset < src.len() && num_elements < want {
+        let (w_len, w) = decode_u64_varint(&src[offset..]).ok()?;
+        offset += w_len.get();
+        num_elements += 1;
+        Some(w)
+      } else {
+        None
+      }
+    }))?;
+
+    if table.as_ref().len() != want {
+      return Err(DecodeError::other("insufficient counters"));
+    }
+
+    Ok((offset, table))
+  }
+}
+
+#[doc(hidden)]
+pub trait TryFromIterator: sealed::Sealed {
+  type Item;
+
+  fn try_from_iterator<I: IntoIterator<Item = Self::Item>>(
+    iter: I,
+  ) -> Result<Self, varing::DecodeError>
+  where
+    Self: Sized;
+}
 
 #[doc(hidden)]
 pub trait WithCapacity: sealed::Sealed {
@@ -57,15 +167,41 @@ macro_rules! impl_d4c4_storage_for_array {
       }
 
       impl D4C4Storage for [u64; $size] {}
+
+      impl TryFromIterator for [u64; $size] {
+        type Item = u64;
+
+        fn try_from_iterator<I: IntoIterator<Item = Self::Item>>(iter: I) -> Result<Self, DecodeError>
+        where
+          Self: Sized,
+        {
+          let mut array = core::mem::MaybeUninit::<[u64; $size]>::uninit();
+          let mut count = 0;
+
+          let ptr = array.as_mut_ptr() as *mut u64;
+          for (i, value) in iter.into_iter().enumerate() {
+            if i >= $size {
+              return Err(DecodeError::other(concat!("too many counters for [u64; ", stringify!($size), "]")));
+            }
+            // Safety: We are within bounds.
+            unsafe { ptr.add(i).write(value); }
+            count += 1;
+          }
+
+          if count != $size {
+            return Err(DecodeError::other(concat!("insufficient counters for [u64; ", stringify!($size), "]")));
+          }
+
+          // Safety: All elements have been initialized.
+          Ok(unsafe { array.assume_init() })
+        }
+      }
     )+
   };
 }
 
 impl_d4c4_storage_for_array! {
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-  17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-  33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-  49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+  8, 16, 32, 64,
 }
 
 /// A wrapper to pretty-print the table as list of 16 4-bit counters.
@@ -119,6 +255,18 @@ const _: () = {
 
   impl D4C4Storage for std::boxed::Box<[u64]> {}
 
+  impl TryFromIterator for std::boxed::Box<[u64]> {
+    type Item = u64;
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn try_from_iterator<I: IntoIterator<Item = Self::Item>>(iter: I) -> Result<Self, DecodeError>
+    where
+      Self: Sized,
+    {
+      <std::vec::Vec<u64> as TryFromIterator>::try_from_iterator(iter).map(|v| v.into_boxed_slice())
+    }
+  }
+
   impl WithCapacity for std::boxed::Box<[u64]> {
     #[cfg_attr(not(tarpaulin), inline(always))]
     fn with_capacity(capacity: usize) -> Self {
@@ -127,6 +275,18 @@ const _: () = {
   }
 
   impl sealed::Sealed for std::vec::Vec<u64> {}
+
+  impl TryFromIterator for std::vec::Vec<u64> {
+    type Item = u64;
+
+    #[cfg_attr(not(tarpaulin), inline(always))]
+    fn try_from_iterator<I: IntoIterator<Item = Self::Item>>(iter: I) -> Result<Self, DecodeError>
+    where
+      Self: Sized,
+    {
+      Ok(iter.into_iter().collect())
+    }
+  }
 
   impl D4C4Storage for std::vec::Vec<u64> {}
 
